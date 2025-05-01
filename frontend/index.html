@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>AI Widget</title>
+    <!-- Подключи React и ReactDOM UMD -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Подключи твой виджет -->
+    <script src="/dist/ai-widget.umd.js"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- Монтируй его -->
+<script>
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+
+    const Widget = window.AiWidget;
+    const app = ReactDOM.createRoot(root);
+    app.render(React.createElement(Widget, {
+        apiBase: 'http://localhost:8080'
+    }));
+</script>
+</body>
+</html>
