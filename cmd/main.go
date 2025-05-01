@@ -1,40 +1,83 @@
+// 📦 main.go — Go backend с поддержкой OpenAI и env
 package main
 
 import (
-	"github.com/gin-gonic/gin"
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
+type ChatRequest struct {
+	Messages []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"messages"`
+}
+
 func main() {
+	godotenv.Load()
 	r := gin.Default()
 
-	// ✅ CORS: разрешаем запросы к API отовсюду
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
+			c.AbortWithStatus(204)
 			return
 		}
 		c.Next()
 	})
 
-	// ✅ API эндпоинт
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	r.POST("/api/chat", func(c *gin.Context) {
-		var req struct {
-			Message string `json:"message"`
-		}
+		var req ChatRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"reply": "You said: " + req.Message,
-		})
+
+		payload := map[string]interface{}{
+			"model":    "gpt-3.5-turbo",
+			"messages": req.Messages,
+		}
+		body, _ := json.Marshal(payload)
+
+		reqOpenAI, _ := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(body))
+		reqOpenAI.Header.Set("Content-Type", "application/json")
+		reqOpenAI.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
+
+		client := &http.Client{}
+		resp, err := client.Do(reqOpenAI)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "OpenAI error"})
+			return
+		}
+		defer resp.Body.Close()
+
+		respBody, _ := io.ReadAll(resp.Body)
+		var openaiResp struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		_ = json.Unmarshal(respBody, &openaiResp)
+
+		reply := ""
+		if len(openaiResp.Choices) > 0 {
+			reply = openaiResp.Choices[0].Message.Content
+		}
+
+		c.JSON(http.StatusOK, gin.H{"reply": reply})
 	})
 
 	// ✅ Статика: подключаем собранный фронт
@@ -48,6 +91,5 @@ func main() {
 		c.File("./frontend/index.html")
 	})
 
-	// 🚀 Запускаем сервер
-	r.Run(":8085") // http://localhost:8085
+	r.Run(":8085")
 }
